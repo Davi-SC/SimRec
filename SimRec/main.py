@@ -4,9 +4,11 @@ import torch
 import json
 import argparse
 from functools import partial
+import pandas as pd #Faltava essa importação do pandas
 
-from model import SASRec
+from model import SimRec #Aqui estava SasRec, corrigi pra SimRec
 from utils import *
+from clusters.utils_clusters import load_item_clusters
 
 def str2bool(s):
     if s not in {'false', 'true', 'False', 'True'}:
@@ -41,8 +43,17 @@ def parse_args():
     parser.add_argument('--l2_emb', default=0.0, type=float)
     
     parser.add_argument('--device', default='cuda', type=str)
+    parser.add_argument('--loss', default='0.0', type=float)#tentando resolver o erro do loss declarando ele aqui
+    
     parser.add_argument('--inference_only', default='false', type=str2bool)
     parser.add_argument('--state_dict_path', type=str)
+
+    # args para os clusters
+    parser.add_argument('--clustering_method', type=str, default=None,
+                        help='Nome da técnica de clusterização a ser usada (ex: kmeans).')
+    parser.add_argument('--clusters_path', type=str, default=None,
+                        help='Caminho para o arquivo CSV com os clusters gerados.')
+    
     args = parser.parse_args()
     return args
 
@@ -51,9 +62,11 @@ def main(args):
     print(args)
 
     item_freq_df = pd.read_csv(args.item_frequency, delimiter=' ', names=['id', 'freq'])
-    item_freq_df['id'] += 1 # id 0 is reserved for PAD
+    item_freq_df['id'] += 1     # id 0 is reserved for PAD
     item_freq = pd.Series(item_freq_df.freq.values, index=item_freq_df.id).to_dict()
 
+    # print("Item mais popular:", max(item_freq, key=item_freq.get))  # Deve retornar um ID válido
+    # print("Frequência máxima:", max(item_freq.values()))  # Deve ser um valor razoável
     if not os.path.isdir(args.train_dir):
         os.makedirs(args.train_dir)
     with open(os.path.join(args.train_dir, 'args.txt'), 'w') as f:
@@ -97,8 +110,16 @@ def main(args):
     f = open(os.path.join(args.train_dir, 'log.txt'), 'w')
     
     sampler = WarpSampler(user_train, usernum, itemnum, batch_size=args.batch_size, maxlen=args.maxlen, n_workers=3)
-    model = SimRec(usernum, itemnum, args).to(args.device)
     
+    #carregando clusters
+    if args.clustering_method and args.clusters_path:
+        print(f"Carregando clusters com o metodo {args.clustering_method}...")
+        item_clusters = load_item_clusters(args.clusters_path)
+    else:   
+        item_clusters = None
+    
+    model = SimRec(usernum, itemnum, args , item_clusters = item_clusters).to(args.device)
+    # model.set_item_clusters(item_clusters)
     model_total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(f"{model_total_params} model parameters")
 
@@ -119,7 +140,7 @@ def main(args):
     
     if args.inference_only:
         model.eval()
-        test_eval_results = [evaluate_test(model, dataset, args) for _ in range(5)]
+        test_eval_results = [evaluate_test(model, dataset, args,item_freq) for _ in range(5)]
             
         test_id_hr = test_eval_results[-1][-2]
         test_id_ndcg = test_eval_results[-1][-1]
@@ -165,7 +186,7 @@ def main(args):
             logits_flat = logits_flat[~pad_indices]
 
             targets_distribution = create_similarity_distirbution(similarity_indices, similarity_values, args.temperature, pos) # (batch_size x max_len, num_items + 1)
-
+            
             loss = lambd * cross_entropy_criterion(logits_flat / args.temperature, targets_distribution) + (1 - lambd) * loss
                 
             if args.l2_emb > 0:
@@ -182,8 +203,9 @@ def main(args):
             t1 = time.time() - t0
             T += t1
             print('Evaluating', end='')
-            test_eval_results = [evaluate_test(model, dataset, args) for _ in range(5)]
-            val_eval_results = [evaluate_valid(model, dataset, args) for _ in range(5)]
+            with torch.no_grad():
+                test_eval_results = [evaluate_test(model, dataset, args, item_freq) for _ in range(5)]
+                val_eval_results = [evaluate_valid(model, dataset, args, item_freq) for _ in range(5)]
             
             test_id_hr = test_eval_results[-1][-2]
             test_id_ndcg = test_eval_results[-1][-1]
@@ -192,18 +214,33 @@ def main(args):
             
             test_hr_list = [e[0][1] for e in test_eval_results]
             test_ndcg_list = [e[0][0] for e in test_eval_results]
+            test_map_list = [e[0][2] for e in test_eval_results]  # MAP@10
+            test_diversity_list = [e[0][3] for e in test_eval_results]  #Diversity
+            test_popularity_list = [e[0][4] for e in test_eval_results]  #Popularity
+
             val_hr_list = [e[0][1] for e in val_eval_results]
             val_ndcg_list = [e[0][0] for e in val_eval_results]
+            val_map_list = [e[0][2] for e in val_eval_results]  # MAP@10
+            val_diversity_list = [e[0][3] for e in val_eval_results]  #Diversity
+            val_popularity_list = [e[0][4] for e in val_eval_results]  #Popularity
 
             # we take the average of different test/val runs
             test_hr = np.array(test_hr_list).mean()
             test_ndcg = np.array(test_ndcg_list).mean()
+            test_map = np.array(test_map_list).mean()
+            test_diversity = np.array(test_diversity_list).mean()
+            test_popularity = np.array(test_popularity_list).mean()
             val_hr = np.array(val_hr_list).mean()
             val_ndcg = np.array(val_ndcg_list).mean()
-
-            (train_ndcg, train_hr), train_id_hr, train_id_ndcg = evaluate_train(model, dataset, args)
-            s = '\nepoch:%d, time: %f(s), train (NDCG@10: %.4f, HR@10: %.4f), valid (NDCG@10: %.4f, HR@10: %.4f), test (NDCG@10: %.4f, HR@10: %.4f)'\
-                    % (epoch, T, train_ndcg, train_hr, val_ndcg, val_hr, test_ndcg, test_hr)
+            val_map = np.array(val_map_list).mean()
+            val_diversity = np.array(val_diversity_list).mean()
+            val_popularity = np.array(val_popularity_list).mean()
+            #val_mae = np.array(val_mae_list).mean()
+            # val_mae = np.array([t.cpu().numpy() if isinstance(t, torch.Tensor) else t for t in val_mae_list]).mean()
+            with torch.no_grad():
+                (train_ndcg, train_hr, train_map, train_diversity, train_popularity ), train_id_hr, train_id_ndcg = evaluate_train(model, dataset, args,item_freq)
+            s = '\nepoch:%d, time: %f(s), train (NDCG@10: %.4f, HR@10: %.4f, MAP@10: %.4f, Diversity: %.4f, Popularity: %.4f), valid (NDCG@10: %.4f, HR@10: %.4f, MAP@10: %.4f, Diversity: %.4f, Popularity: %.4f), test (NDCG@10: %.4f, HR@10: %.4f, MAP@10: %.4f,Diversity: %.4f, Popularity: %.4f)'\
+                % (epoch, T, train_ndcg, train_hr, train_map, train_diversity, train_popularity,  val_ndcg, val_hr, val_map, val_diversity, val_popularity,  test_ndcg, test_hr, test_map, test_diversity, test_popularity)
             print(s)
             f.write(s + '\n')
             f.flush()
@@ -218,26 +255,49 @@ def main(args):
                 print(f"New best val HR@10: {val_hr}. Saving checkpoint.")
                 best_val_hr = max(best_val_hr, val_hr)
                 best_results = {
-                    'test/best_id_to_HR@10': test_id_hr,
-                    'test/best_id_to_NDCG@10': test_id_ndcg,
-                    'val/best_id_to_HR@10': valid_id_hr,
-                    'val/best_id_to_NDCG@10': valid_id_ndcg,
-                    'train/best_id_to_HR@10': train_id_hr,
-                    'train/best_id_to_NDCG@10': train_id_ndcg,
+                    # 'test/best_id_to_HR@10': test_id_hr,
+                    # 'test/best_id_to_NDCG@10': test_id_ndcg,
+                    # 'val/best_id_to_HR@10': valid_id_hr,
+                    # 'val/best_id_to_NDCG@10': valid_id_ndcg,
+                    # 'train/best_id_to_HR@10': train_id_hr,
+                    # 'train/best_id_to_NDCG@10': train_id_ndcg,
                     "test/best_NDCG@10": test_ndcg,
                     "test/best_HR@10": test_hr,
+                    'test/best_MAP@10': test_map,  # Adicionado
+                    "test/best_Diversity": test_diversity,
+                    "test/best_Popularity": test_popularity,
                     "val/best_NDCG@10": val_ndcg,
                     "val/best_HR@10": val_hr,
+                    'val/best_MAP@10': val_map,  # Adicionado
+                    "val/best_Diversity": val_diversity,
+                    "val/best_Popularity": val_popularity,
                     "train/best_NDCG@10": train_ndcg,
                     "train/best_HR@10": train_hr,
+                    'train/best_MAP@10': train_map,  # Adicionado
+                    "train/best_Diversity": train_diversity,
+                    "train/best_Popularity": train_popularity
                 }
             t0 = time.time()
             model.train()
+    #Adicionando os melhores resultados no arquivo log.txt 
+    f.write(f"\nBest Results:\n")
+    for key, value in best_results.items():
+        f.write(f"    {key}: {value}\n")
     f.close()
     sampler.close()
     print("Done")
 
 
 if __name__ == '__main__':
+    # # Teste 1: Item relevante na posição 1
+    # assert compute_MAP([5], [5, 3, 7, 2, 1], k=10) == 1.0, "Erro no Teste 1"
+
+    # # Teste 2: Item relevante na posição 3
+    # assert compute_MAP([5], [3, 7, 5, 2, 1], k=10) == (1/3), "Erro no Teste 2"
+
+    # # Teste 3: Item relevante fora do top-10
+    # assert compute_MAP([5], [3, 7, 2, 1, 4, 6, 8, 9, 10, 11], k=10) == 0.0, "Erro no Teste 3"
+
+    # print("Todos os testes passaram!")
     args = parse_args()
     main(args)

@@ -168,15 +168,23 @@ def data_partition(fname, augmentations_fname=None):
     return [user_train, user_valid, user_test, usernum, itemnum]
 
 # evaluate on test set
-def evaluate_test(model, dataset, args):
+def evaluate_test(model, dataset, args, item_freq):
 
     [train, valid, test, usernum, itemnum] = copy.deepcopy(dataset)
 
     NDCG = 0.0
     HT = 0.0
+    sum_MAP = 0.0   # MAP@10
+    # sum_MAE = 0.0   # MAE
+    valid_users_map = 0
     valid_user = 0.0
-    id_hr = defaultdict(list)
-    id_ndcg = defaultdict(list)
+    id_hr = defaultdict(list)   #Os valores sãos listas de 1 ou 0(hit ou não hit) para cada usuario que interagiu com o item
+    id_ndcg = defaultdict(list) #Os valores são listas do valor de NDCG@10 para cada usuário que interagiu com o item.
+    recommendations = {} #armazenar recomendações {user: [topN items]}
+    
+    # #definir o numero de candidatos(para melhoria das metricas de avaliação) - ajustar conforme necessario
+    # candidate_size = 1000
+
     if usernum>10000:
         users = random.sample(range(1, usernum + 1), 10000)
     else:
@@ -195,20 +203,26 @@ def evaluate_test(model, dataset, args):
             if idx == -1: break
         rated = set(train[u])
         rated.add(0)
+
+
         item_idx = [test[u][0]]
+
         for _ in range(100):
             t = np.random.randint(1, itemnum + 1)
             while t in rated: t = np.random.randint(1, itemnum + 1)
             item_idx.append(t)
-
-        predictions = -model.predict(*[np.array(l) for l in [[u], [seq], item_idx]])
-        predictions = predictions[0] # - for 1st argsort DESC
+        
+        predictions_original = model.predict(*[np.array(l) for l in [[u], [seq], item_idx]])
+        predictions_original = predictions_original[0].cpu().numpy() # - for 1st argsort DESC
+        
+        predictions = -predictions_original # para HR e NDCG
+        predictions_tomap = predictions_original # para MAP
 
         rank = predictions.argsort().argsort()[0].item()
-
+        # Atualiza HR@10 e NDCG@10
         valid_user += 1
         if rank < 10:
-            ndcg = 1 / np.log2(rank + 2)
+            ndcg = 1 / np.log2(rank + 2) # Fórmula do NDCG
             NDCG += ndcg
             HT += 1            
             id_hr[item_idx[0]].append(1)
@@ -219,18 +233,38 @@ def evaluate_test(model, dataset, args):
         if valid_user % 100 == 0:
             print('.', end="")
             sys.stdout.flush()
-    return (NDCG / valid_user, HT / valid_user), id_hr, id_ndcg
-
-
+        
+        #Calculo de MAP@10
+    
+        ranked_list = np.argsort(predictions_tomap)[::-1]   #ordenando os indics das previsões  de ordem decrescente
+        ranked_items = [item_idx[i] for i in ranked_list]
+        relevant_items = [test[u][0]]
+        ap = compute_MAP(relevant_items,ranked_items,k=10)
+        if ap is not None:
+            sum_MAP += ap
+            valid_users_map += 1
+        
+        # coletando topN itens recomendados
+        topN_items = [item_idx[i] for i in ranked_list[:10]]  # topN = 10
+        recommendations[u] = topN_items  # Armazena recomendações
+    
+    map_score = sum_MAP / valid_users_map if valid_users_map > 0 else 0.0
+    # Calcular diversidade e popularidade
+    diversity = calculate_coverage_diversity(recommendations, itemnum, len(users), 10)
+    popularity = calculate_popularity(recommendations, item_freq, len(users), 10)  # item_freq é o dicionário de frequências
+    return (NDCG / valid_user, HT / valid_user , map_score, diversity, popularity ), id_hr, id_ndcg
 # evaluate on val set
-def evaluate_valid(model, dataset, args):
+def evaluate_valid(model, dataset, args, item_freq):
     [train, valid, test, usernum, itemnum] = copy.deepcopy(dataset)
 
     NDCG = 0.0
     HT = 0.0
+    sum_MAP = 0.0   # MAP@10
+    valid_users_map = 0 #contador de usuarios validos para o MAP
     valid_user = 0.0
     id_hr = defaultdict(list)
     id_ndcg = defaultdict(list)
+    recommendations = {}
     if usernum>10000:
         users = random.sample(range(1, usernum + 1), 10000)
     else:
@@ -253,8 +287,11 @@ def evaluate_valid(model, dataset, args):
             while t in rated: t = np.random.randint(1, itemnum + 1)
             item_idx.append(t)
 
-        predictions = -model.predict(*[np.array(l) for l in [[u], [seq], item_idx]])
-        predictions = predictions[0]
+        predictions_original = model.predict(*[np.array(l) for l in [[u], [seq], item_idx]])
+        predictions_original = predictions_original[0].cpu().numpy() # - for 1st argsort DESC
+        
+        predictions = -predictions_original # para HR e NDCG
+        predictions_tomap = predictions_original # para MAP
 
         rank = predictions.argsort().argsort()[0].item()
 
@@ -271,17 +308,40 @@ def evaluate_valid(model, dataset, args):
         if valid_user % 100 == 0:
             print('.', end="")
             sys.stdout.flush()
-    return (NDCG / valid_user, HT / valid_user), id_hr, id_ndcg
+        
+        #Calculo de MAP@10
+        ranked_list = np.argsort(predictions_tomap)[::-1]   #ordenando os indics das previsões  de ordem decrescente
+        ranked_items = [item_idx[i] for i in ranked_list]
+        relevant_items = [valid[u][0]]
+        ap = compute_MAP(relevant_items,ranked_items,k=10)
+        if ap is not None:
+            sum_MAP += ap
+            valid_users_map += 1
+
+        # coletando topN itens recomendados
+        topN_items = [item_idx[i] for i in ranked_list[:10]]  # topN = 10
+        recommendations[u] = topN_items  # Armazena recomendações
+    
+    map_score = sum_MAP / valid_users_map if valid_users_map > 0 else 0.0
+    
+    # Calcular diversidade e popularidade
+    diversity = calculate_coverage_diversity(recommendations, itemnum, len(users), 10)
+    popularity = calculate_popularity(recommendations, item_freq, len(users), 10)  # item_freq é o dicionário de frequências
+    
+    return (NDCG / valid_user, HT / valid_user , map_score, diversity, popularity ), id_hr, id_ndcg
 
 # evaluate on train set
-def evaluate_train(model, dataset, args):
+def evaluate_train(model, dataset, args, item_freq):
     [train, valid, test, usernum, itemnum] = copy.deepcopy(dataset)
 
     NDCG = 0.0
     HT = 0.0
+    sum_MAP = 0.0   # MAP@10
+    valid_users_map = 0 #contador de usuarios validos para o MAP
     valid_user = 0.0
     id_hr = defaultdict(list)
     id_ndcg = defaultdict(list)
+    recommendations = {}
     if usernum>10000:
         users = random.sample(range(1, usernum + 1), 10000)
     else:
@@ -304,8 +364,11 @@ def evaluate_train(model, dataset, args):
             while t in rated: t = np.random.randint(1, itemnum + 1)
             item_idx.append(t)
 
-        predictions = -model.predict(*[np.array(l) for l in [[u], [seq], item_idx]])
-        predictions = predictions[0]
+        predictions_original = model.predict(*[np.array(l) for l in [[u], [seq], item_idx]])
+        predictions_original = predictions_original[0].cpu().numpy() # - for 1st argsort DESC
+        
+        predictions = -predictions_original # para HR e NDCG
+        predictions_tomap = predictions_original # para MAP
 
         rank = predictions.argsort().argsort()[0].item()
 
@@ -322,4 +385,54 @@ def evaluate_train(model, dataset, args):
         if valid_user % 100 == 0:
             print('.', end="")
             sys.stdout.flush()
-    return (NDCG / valid_user, HT / valid_user), id_hr, id_ndcg
+        
+        #Calculo de MAP@10
+        ranked_list = np.argsort(predictions_tomap)[::-1]   #ordenando os indics das previsões  de ordem decrescente
+        ranked_items = [item_idx[i] for i in ranked_list]
+        relevant_items = [train[u][-1]]
+        ap = compute_MAP(relevant_items,ranked_items,k=10)
+        if ap is not None:
+            sum_MAP += ap
+            valid_users_map += 1
+        
+        # coletando topN itens recomendados
+        topN_items = [item_idx[i] for i in ranked_list[:10]]  # topN = 10
+        recommendations[u] = topN_items  # Armazena recomendações
+    
+    map_score = sum_MAP / valid_users_map if valid_users_map > 0 else 0.0
+    
+    # Calcular diversidade e popularidade
+    diversity = calculate_coverage_diversity(recommendations, itemnum, len(users), 10)
+    popularity = calculate_popularity(recommendations, item_freq, len(users), 10)  # item_freq é o dicionário de frequências
+    
+    return (NDCG / valid_user, HT / valid_user , map_score, diversity, popularity ), id_hr, id_ndcg
+
+def compute_MAP(relevant_items,ranked_list,k):
+    if not relevant_items:
+        return None   #Se um usuario não tem itens relevantes, ele não contribui para o MAP
+    
+    hits = 0
+    sum_precision = 0.0
+
+    for i,item in enumerate(ranked_list[:k]):
+        if item in relevant_items:
+            hits += 1
+            precision_at_i = hits/(i+1)  #precisão acumulada ate o item i
+            sum_precision += precision_at_i
+
+    return sum_precision / len(relevant_items)  # Normalizar pelo número de itens relevantes
+    # return sum_precision  # AP para 1 item relevante = precisão na posição do item
+
+def calculate_coverage_diversity(recommendations, total_items, num_users, topN):
+    unique_items = set()
+    for items in recommendations.values():
+        unique_items.update(items)
+    return len(unique_items) / (num_users * topN)
+    #return len(unique_items) / (total_items)  # Versão alternativa: diversidade absoluta
+
+def calculate_popularity(recommendations, item_freq, num_users, topN):
+    Ru_total = 0
+    for items in recommendations.values():
+        Ru_total += sum(item_freq.get(item, 0) for item in items)
+    total_interactions = sum(item_freq.values())
+    return Ru_total / (num_users * topN) / total_interactions  # Popularidade, versão normalizada

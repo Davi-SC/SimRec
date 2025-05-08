@@ -13,6 +13,7 @@ class PointWiseFeedForward(torch.nn.Module):
         self.relu = torch.nn.ReLU()
         self.conv2 = torch.nn.Conv1d(hidden_units, hidden_units, kernel_size=1)
         self.dropout2 = torch.nn.Dropout(p=dropout_rate)
+        self.item_clusters = None # item clusters
 
     def forward(self, inputs):
         outputs = self.dropout2(self.conv2(self.relu(self.dropout1(self.conv1(inputs.transpose(-1, -2))))))
@@ -25,16 +26,18 @@ class PointWiseFeedForward(torch.nn.Module):
 # https://github.com/pmixer/TiSASRec.pytorch/blob/master/model.py
 
 class SimRec(torch.nn.Module):
-    def __init__(self, user_num, item_num, args):
+    def __init__(self, user_num, item_num, args, item_clusters):
         super(SimRec, self).__init__()
 
         self.user_num = user_num
         self.item_num = item_num
+        self.item_clusters = item_clusters
         self.dev = args.device
-        self.loss = args.loss
-        self.training_mode = args.training_mode
+        self.loss = args.loss  #ERRO QUE NÃO CONSEGUI RESOLVER -- AttributeError: 'Namespace' object has no attribute 'loss'
+        # self.training_mode = args.training_mode #depois de tentar resolver o erro do loss declarando ele, deu erro aqui
 
         # TODO: loss += args.l2_emb for regularizing embedding vectors during training
+        self.loss += args.l2_emb
         # https://stackoverflow.com/questions/42704283/adding-l1-l2-regularization-in-pytorch
         self.item_emb = torch.nn.Embedding(self.item_num+1, args.hidden_units, padding_idx=0)
         self.pos_emb = torch.nn.Embedding(args.maxlen, args.hidden_units) # TO IMPROVE
@@ -138,7 +141,22 @@ class SimRec(torch.nn.Module):
             item_indices = torch.LongTensor(item_indices).to(self.dev)
 
         item_embs = self.item_emb(item_indices)  # (U, I, C)
-
         logits = item_embs.matmul(final_feat.unsqueeze(-1)).squeeze(-1)
 
-        return logits # preds # (U, I)
+        # soft filtering com boost para itens do mesmo cluster
+        if self.item_clusters is not None:
+            last_item_id = log_seqs[0][-1].item()  # último item da sequência
+            if last_item_id in self.item_clusters:
+                target_cluster = self.item_clusters[last_item_id]
+                boost_factor = 1.75
+                boost_mask = torch.tensor([
+                    boost_factor if self.item_clusters.get(i.item(), -1) == target_cluster else 1.0
+                    for i in item_indices
+                ]).to(self.dev)
+                logits *= boost_mask  # aplica o boost soft
+        # print(f"[DEBUG] Predict ativado — último item: {last_item_id}, cluster: {target_cluster}")
+        return logits # preds (U, I)
+        # return torch.sigmoid(logits) 
+    
+    def set_item_clusters(self, cluster_dict):
+        self.item_clusters = cluster_dict

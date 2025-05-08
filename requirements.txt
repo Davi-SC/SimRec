@@ -1,8 +1,12 @@
-pytorch
+torch
 numpy
 tqdm
 transformers
 sentence-transformers
 pandas
 wget
+torch-kmeans
+implicit
 gzip
+pyclustering
+torchmetrics

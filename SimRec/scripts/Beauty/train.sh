@@ -8,6 +8,10 @@ ITEM_FREQ="${DATASET_PARTIAL_PATH}-train_item_freq.txt"
 SIMILARITY_INDICES="${DATASET_PARTIAL_PATH}-similarity-indices-${EMBEDDING_MODEL}.pt"
 SIMILARITY_VALUES="${DATASET_PARTIAL_PATH}-similarity-values-${EMBEDDING_MODEL}.pt"
 
+#clusters
+CLUSTERING_METHOD="kmeansk4"  # ou agnes, diana
+CLUSTERS_PATH="clusters/Beauty/${CLUSTERING_METHOD}_clusters.csv"
+
 SIMILARITY_THREHOLD=0.9
 TEMPERATURE=0.5
 LAMBDA=0.3
@@ -42,4 +46,6 @@ python main.py --dataset ${DATASET}\
                --num_epochs ${EPOCHS}\
                --hidden_units ${HIDDEN_DIM}\
                --train_dir ${TRAIN_DIR}\
-               --device ${DEVICE}
+               --device ${DEVICE}\
+               --clustering_method ${CLUSTERING_METHOD}\
+               --clusters_path ${CLUSTERS_PATH}
