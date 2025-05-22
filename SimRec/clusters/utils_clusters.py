@@ -1,6 +1,7 @@
 from sklearn.metrics import silhouette_score
 from torchmetrics.clustering import DunnIndex
 import pandas as pd
+import torch
 
 def load_item_clusters(cluster_file):
     df = pd.read_csv(cluster_file)
@@ -14,7 +15,8 @@ def evaluate_silhouette(embeddings, labels):
 
 def evaluate_dunn(embeddings, labels):
     dunn = DunnIndex()
-    return dunn(embeddings, labels)
+    labels_tensor = torch.tensor(labels, dtype=torch.int, device=embeddings.device)
+    return dunn(embeddings, labels_tensor).item()
 
 # def evaluate_connectivity(embeddings, labels):
 

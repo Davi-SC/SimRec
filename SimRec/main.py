@@ -289,15 +289,5 @@ def main(args):
 
 
 if __name__ == '__main__':
-    # # Teste 1: Item relevante na posição 1
-    # assert compute_MAP([5], [5, 3, 7, 2, 1], k=10) == 1.0, "Erro no Teste 1"
-
-    # # Teste 2: Item relevante na posição 3
-    # assert compute_MAP([5], [3, 7, 5, 2, 1], k=10) == (1/3), "Erro no Teste 2"
-
-    # # Teste 3: Item relevante fora do top-10
-    # assert compute_MAP([5], [3, 7, 2, 1, 4, 6, 8, 9, 10, 11], k=10) == 0.0, "Erro no Teste 3"
-
-    # print("Todos os testes passaram!")
     args = parse_args()
     main(args)

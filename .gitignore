@@ -27,13 +27,13 @@ data_preprocessing/**/*-similarity-values-*.pt
 data_preprocessing/**/*-similarity-indices-*.pt
 
 # === Embeddings e Clusters ===
-SimRec/clusters/**/clusters_*.txt
-SimRec/clusters/**/clusters_*.csv
-SimRec/clusters/**/*_clusters.csv
-SimRec/clusters/**/kmeans_*.csv
-SimRec/clusters/**/agnes_*.csv
-SimRec/clusters/**/pam_*.csv
-SimRec/clusters/**/clarans_*.csv
+SimRec/clusters/Beauty
+SimRec/clusters/ML-1M
+SimRec/clusters/PetSupplies
+SimRec/clusters/Steam
+SimRec/clusters/Tools
+SimRec/clusters/HomeKitchen
+
 
 # === Resultados (avaliacoes dos clusters e do modelo) ===
 SimRec/results/

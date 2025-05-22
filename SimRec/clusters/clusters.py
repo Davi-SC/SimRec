@@ -3,14 +3,17 @@ import os
 import pandas as pd
 import numpy as np
 import torch
-from torch_kmeans import KMeans
-from pyclustering.cluster.agglomerative import agglomerative as agnes
-from pyclustering.cluster.center_initializer import kmeans_plusplus_initializer
-from pyclustering.cluster.agglomerative import agglomerative_visualizer
-from pyclustering.cluster.clarans import clarans
-from pyclustering.cluster.kmedoids import kmedoids
-from pyclustering.utils import distance_metric,type_metric
+import hdbscan
+from sklearn.cluster import KMeans, AgglomerativeClustering, DBSCAN, SpectralClustering
+from sklearn.metrics import pairwise_distances
+from kmedoids import fasterpam, fastermsc, dynmsc
 
+# from torch_kmeans import KMeans
+# from pyclustering.cluster.agglomerative import agglomerative as agnes
+# from pyclustering.cluster.center_initializer import kmeans_plusplus_initializer
+# from pyclustering.cluster.clarans import clarans
+# from pyclustering.cluster.kmedoids import kmedoids
+# from pyclustering.utils import distance_metric,type_metric
 
 
 def load_embeddings(embeddings_path):
@@ -28,54 +31,85 @@ def save_clusters(cluster_ids, output_path):
     print(f"Clusters salvos em {output_path}")
     
 def run_kmeans(embeddings, n_clusters):
-    kmeans = KMeans(n_clusters=n_clusters, max_iter=100, device=embeddings.device)
+    kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init='auto')
     cluster_ids = kmeans.fit_predict(embeddings)
-    return cluster_ids.cpu().numpy, kmeans
+    return cluster_ids, kmeans
+    # kmeans = KMeans(n_clusters=n_clusters, max_iter=100, device=embeddings.device)
+    # cluster_ids = kmeans.fit_predict(embeddings.unsqueeze(0))
+    # return cluster_ids.squeeze(0).cpu().numpy(), kmeans
 
-def run_agnes(embeddings, n_clusters):
-    data = embeddings.cpu().tolist()
-    initial_centers = kmeans_plusplus_initializer(data, n_clusters).initialize()
-    model = agnes(data, initial_centers)
-    model.process()
-    clusters = model.get_clusters()
+def run_agnes(embeddings, n_clusters, linkage='ward'):
+    agnes = AgglomerativeClustering(n_clusters=n_clusters, linkage=linkage)
+    cluster_ids = agnes.fit_predict(embeddings)
+    return cluster_ids, agnes
 
-    cluster_ids = np.zeros(len(data), dtype=int)
-    for cluster_id, indices in enumerate(clusters):
-        for idx in indices:
-            cluster_ids[idx] = cluster_id
-    
-    return cluster_ids, model
+def run_fasterpam(embeddings, n_clusters):
+    if isinstance(embeddings, torch.Tensor):
+        embeddings = embeddings.cpu().numpy()
+    diss_matrix = pairwise_distances(embeddings, metric='cosine')
+    fasterPam = fasterpam(diss_matrix, n_clusters)
 
-def run_clarans(embeddings, n_clusters, numlocal=2, maxneighbor=5):
-    data = embeddings.cpu().tolist()
-    
-    model = clarans(data, n_clusters, numlocal=numlocal, maxneighbor=maxneighbor)
-    model.process()
-    
-    clusters = model.get_clusters()
-    
-    cluster_ids = np.zeros(len(data), dtype=int)
-    for cluster_id, indices in enumerate(clusters):
-        for idx in indices:
-            cluster_ids[idx] = cluster_id
+    return fasterPam.labels, fasterPam.medoids
 
-    return cluster_ids, model
+def run_fastermsc(embeddings, n_clusters):
+    if isinstance(embeddings, torch.Tensor):
+        embeddings = embeddings.cpu().numpy()
+    diss_matrix = pairwise_distances(embeddings, metric='cosine')
+    fasterMsc = fastermsc(diss_matrix, n_clusters)
 
-def run_pam(embeddings, n_clusters):
-    data = embeddings.cpu().tolist()
-    
-    initial_medoids = kmeans_plusplus_initializer(data, n_clusters).initialize()
-    
-    metric = distance_metric(type_metric.EUCLIDEAN)
-    
-    model = kmedoids(data, initial_medoids, data_type='points', metric=metric)
-    model.process()
-    
-    clusters = model.get_clusters()
+    return fasterMsc.labels, fasterMsc.medoids
 
-    cluster_ids = np.zeros(len(data), dtype=int)
-    for cluster_id, indices in enumerate(clusters):
-        for idx in indices:
-            cluster_ids[idx] = cluster_id
+def run_dynmsc(embeddings, n_clusters):
+    if isinstance(embeddings, torch.Tensor):
+        embeddings = embeddings.cpu().numpy()
+    diss_matrix = pairwise_distances(embeddings, metric='cosine')
+    dynMsc = dynmsc(diss_matrix, n_clusters)
+    
+    return dynMsc.labels, dynMsc.medoids
 
-    return cluster_ids, model
+def run_dbscan(embeddings, eps=0.5, min_samples=5):
+    dbscan = DBSCAN(eps=eps, min_samples=min_samples, metric='cosine')
+    cluster_ids = dbscan.fit_predict(embeddings)
+    return cluster_ids, dbscan
+
+def run_spectral(embeddings, n_clusters, n_neighbors):
+    spectral = SpectralClustering(n_clusters=n_clusters, affinity='nearest_neighbors', assign_labels='kmeans', n_neighbors=n_neighbors)
+    cluster_ids = spectral.fit_predict(embeddings)
+    return cluster_ids, spectral
+
+def run_hdbscan(embeddings, min_cluster_size=5, min_samples=None):
+    hdbscan_model = hdbscan.HDBSCAN(min_cluster_size=min_cluster_size, min_samples=min_samples, metric='euclidean')
+    cluster_ids = hdbscan_model.fit_predict(embeddings)
+    return cluster_ids, hdbscan_model
+
+# def run_clarans(embeddings, n_clusters, numlocal=2, maxneighbor=5):
+#     data = embeddings.cpu().tolist()
+    
+#     model = clarans(data, n_clusters, numlocal=numlocal, maxneighbor=maxneighbor)
+#     model.process()
+    
+#     clusters = model.get_clusters()
+    
+#     cluster_ids = np.zeros(len(data), dtype=int)
+#     for cluster_id, indices in enumerate(clusters):
+#         for idx in indices:
+#             cluster_ids[idx] = cluster_id
+
+#     return cluster_ids, model
+
+# def run_pam(embeddings, n_clusters):
+#     data = embeddings.cpu().tolist()
+#     initial_medoids = list(range(n_clusters))
+    
+#     metric = distance_metric(type_metric.EUCLIDEAN)
+#     model = kmedoids(data, initial_medoids, data_type='points', metric=metric)
+#     model.process()
+    
+#     clusters = model.get_clusters()
+
+#     cluster_ids = np.zeros(len(data), dtype=int)
+#     for cluster_id, indices in enumerate(clusters):
+#         for idx in indices:
+#             cluster_ids[idx] = cluster_id
+
+#     return cluster_ids, model
