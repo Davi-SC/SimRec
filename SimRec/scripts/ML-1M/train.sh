@@ -8,6 +8,10 @@ ITEM_FREQ="${DATASET_PARTIAL_PATH}-train_item_freq.txt"
 SIMILARITY_INDICES="${DATASET_PARTIAL_PATH}-similarity-indices-${EMBEDDING_MODEL}.pt"
 SIMILARITY_VALUES="${DATASET_PARTIAL_PATH}-similarity-values-${EMBEDDING_MODEL}.pt"
 
+#clusters
+CLUSTERING_METHOD="kmeans100"  
+CLUSTERS_PATH="clusters/ML-1M/best_${CLUSTERING_METHOD}_umap.csv"
+
 SIMILARITY_THREHOLD=0.5
 TEMPERATURE=1
 LAMBDA=0.6
@@ -43,4 +47,6 @@ python main.py --dataset ${DATASET}\
                --num_epochs ${EPOCHS}\
                --hidden_units ${HIDDEN_DIM}\
                --train_dir ${TRAIN_DIR}\
-               --device ${DEVICE}
+               --device ${DEVICE}\
+               --clustering_method ${CLUSTERING_METHOD}\
+               --clusters_path ${CLUSTERS_PATH}
