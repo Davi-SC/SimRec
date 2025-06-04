@@ -148,7 +148,7 @@ class SimRec(torch.nn.Module):
             last_item_id = log_seqs[0][-1].item()  # último item da sequência
             if last_item_id in self.item_clusters:
                 target_cluster = self.item_clusters[last_item_id]
-                boost_factor = 1.75
+                boost_factor = 1.5
                 boost_mask = torch.tensor([
                     boost_factor if self.item_clusters.get(i.item(), -1) == target_cluster else 1.0
                     for i in item_indices
