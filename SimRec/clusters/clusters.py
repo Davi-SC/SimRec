@@ -57,7 +57,8 @@ def run_dynmsc(embeddings, n_clusters):
     if isinstance(embeddings, torch.Tensor):
         embeddings = embeddings.cpu().numpy()
     diss_matrix = pairwise_distances(embeddings, metric='cosine')
-    dynMsc = dynmsc(diss_matrix, n_clusters)
+    # dynMsc = dynmsc(diss_matrix, n_clusters)
+    dynMsc = dynmsc(diss_matrix, medoids=n_clusters ,minimum_k=n_clusters)
     
     return dynMsc.labels, dynMsc.medoids
 
