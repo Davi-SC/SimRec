@@ -1,8 +1,0 @@
-Method,Métrica de Distância,Nº de Clusters (k),Silhouette,Dunn
-Dynmsc,cosine,2,0.22262499,0.2277525663375854
-Dynmsc,euclidean,2,0.62545466,1.2344870567321775
-Fastermsc,cosine,2,0.22262499,0.2277525663375854
-Fastermsc,euclidean,2,0.62545466,1.2344870567321775
-Fasterpam,cosine,2,0.09551344,0.0854354724287986
-Fasterpam,euclidean,2,0.4524058,0.3254299759864807
-Fasterpam,euclidean,750,0.16001146,0.397510826587677

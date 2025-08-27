@@ -34,7 +34,7 @@ class SimRec(torch.nn.Module):
         self.item_clusters = item_clusters
         self.dev = args.device
         self.loss = args.loss  #ERRO QUE NÃO CONSEGUI RESOLVER -- AttributeError: 'Namespace' object has no attribute 'loss'
-        # self.training_mode = args.training_mode #depois de tentar resolver o erro do loss declarando ele, deu erro aqui
+        # self.training_mode = sargs.training_mode #depois de tentar resolver o erro do loss declarando ele, deu erro aqui
 
         # TODO: loss += args.l2_emb for regularizing embedding vectors during training
         self.loss += args.l2_emb
@@ -148,13 +148,13 @@ class SimRec(torch.nn.Module):
             last_item_id = log_seqs[0][-1].item()  # último item da sequência
             if last_item_id in self.item_clusters:
                 target_cluster = self.item_clusters[last_item_id]
-                boost_factor = 1.5
+                boost_factor = 2.5
                 boost_mask = torch.tensor([
                     boost_factor if self.item_clusters.get(i.item(), -1) == target_cluster else 1.0
                     for i in item_indices
                 ]).to(self.dev)
                 logits *= boost_mask  # aplica o boost soft
-        # print(f"[DEBUG] Predict ativado — último item: {last_item_id}, cluster: {target_cluster}")
+        # print(f"###[DEBUG]### Predict ativado — último item: {last_item_id}, cluster: {target_cluster}")
         return logits # preds (U, I)
         # return torch.sigmoid(logits) 
     

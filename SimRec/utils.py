@@ -7,6 +7,7 @@ from collections import defaultdict
 from multiprocessing import Process, Queue
 from enum import auto, Enum
 from itertools import chain
+from recbole.evaluator.metrics import MAP, Precision, AveragePopularity
 
 class LinearScheduleWithWarmup:
     def __init__(self, lambd, warmup_steps, lamb_steps):
@@ -180,10 +181,10 @@ def evaluate_test(model, dataset, args, item_freq):
     valid_user = 0.0
     id_hr = defaultdict(list)   #Os valores sãos listas de 1 ou 0(hit ou não hit) para cada usuario que interagiu com o item
     id_ndcg = defaultdict(list) #Os valores são listas do valor de NDCG@10 para cada usuário que interagiu com o item.
-    recommendations = {} #armazenar recomendações {user: [topN items]}
     
-    # #definir o numero de candidatos(para melhoria das metricas de avaliação) - ajustar conforme necessario
-    # candidate_size = 1000
+    recommendations = {} #armazenar recomendações {user: [topN items]}
+    ground_truth = {}
+
 
     if usernum>10000:
         users = random.sample(range(1, usernum + 1), 10000)
@@ -249,10 +250,21 @@ def evaluate_test(model, dataset, args, item_freq):
         recommendations[u] = topN_items  # Armazena recomendações
     
     map_score = sum_MAP / valid_users_map if valid_users_map > 0 else 0.0
+    
     # Calcular diversidade e popularidade
     diversity = calculate_coverage_diversity(recommendations, itemnum, len(users), 10)
     popularity = calculate_popularity(recommendations, item_freq, len(users), 10)  # item_freq é o dicionário de frequências
+    
     return (NDCG / valid_user, HT / valid_user , map_score, diversity, popularity ), id_hr, id_ndcg
+
+    # recs_list = [recommendations[u] for u in users if u in recommendations]
+    # truth_list = [recommendations[u] for u in users if u in recommendations]
+    # map_recbole = MAP(recs_list,truth_list)
+    # precision_recbole = Precision(recs_list,truth_list)
+    # avg_pop_recbole = AveragePopularity(recs_list,item_freq)
+
+    # return (NDCG / valid_user, HT / valid_user, map_recbole, precision_recbole, avg_pop_recbole), id_hr, id_ndcg
+
 # evaluate on val set
 def evaluate_valid(model, dataset, args, item_freq):
     [train, valid, test, usernum, itemnum] = copy.deepcopy(dataset)
@@ -264,7 +276,10 @@ def evaluate_valid(model, dataset, args, item_freq):
     valid_user = 0.0
     id_hr = defaultdict(list)
     id_ndcg = defaultdict(list)
+
     recommendations = {}
+    ground_truth = {}
+    
     if usernum>10000:
         users = random.sample(range(1, usernum + 1), 10000)
     else:
@@ -330,6 +345,14 @@ def evaluate_valid(model, dataset, args, item_freq):
     
     return (NDCG / valid_user, HT / valid_user , map_score, diversity, popularity ), id_hr, id_ndcg
 
+    # recs_list = [recommendations[u] for u in users if u in recommendations]
+    # truth_list = [recommendations[u] for u in users if u in recommendations]
+    # map_recbole = MAP(recs_list,truth_list)
+    # precision_recbole = Precision(recs_list,truth_list)
+    # avg_pop_recbole = AveragePopularity(recs_list,item_freq)
+
+    # return (NDCG / valid_user, HT / valid_user, map_recbole, precision_recbole, avg_pop_recbole), id_hr, id_ndcg
+
 # evaluate on train set
 def evaluate_train(model, dataset, args, item_freq):
     [train, valid, test, usernum, itemnum] = copy.deepcopy(dataset)
@@ -342,6 +365,8 @@ def evaluate_train(model, dataset, args, item_freq):
     id_hr = defaultdict(list)
     id_ndcg = defaultdict(list)
     recommendations = {}
+    ground_truth = {}
+
     if usernum>10000:
         users = random.sample(range(1, usernum + 1), 10000)
     else:
@@ -386,7 +411,6 @@ def evaluate_train(model, dataset, args, item_freq):
             print('.', end="")
             sys.stdout.flush()
         
-        #Calculo de MAP@10
         ranked_list = np.argsort(predictions_tomap)[::-1]   #ordenando os indics das previsões  de ordem decrescente
         ranked_items = [item_idx[i] for i in ranked_list]
         relevant_items = [train[u][-1]]
@@ -398,7 +422,8 @@ def evaluate_train(model, dataset, args, item_freq):
         # coletando topN itens recomendados
         topN_items = [item_idx[i] for i in ranked_list[:10]]  # topN = 10
         recommendations[u] = topN_items  # Armazena recomendações
-    
+
+    # Calculo de MAP@10
     map_score = sum_MAP / valid_users_map if valid_users_map > 0 else 0.0
     
     # Calcular diversidade e popularidade
@@ -406,6 +431,14 @@ def evaluate_train(model, dataset, args, item_freq):
     popularity = calculate_popularity(recommendations, item_freq, len(users), 10)  # item_freq é o dicionário de frequências
     
     return (NDCG / valid_user, HT / valid_user , map_score, diversity, popularity ), id_hr, id_ndcg
+    
+    # recs_list = [recommendations[u] for u in users if u in recommendations]
+    # truth_list = [recommendations[u] for u in users if u in recommendations]
+    # map_recbole = MAP(recs_list,truth_list)
+    # precision_recbole = Precision(recs_list,truth_list)
+    # avg_pop_recbole = AveragePopularity(recs_list,item_freq)
+
+    # return (NDCG / valid_user, HT / valid_user, map_recbole, precision_recbole, avg_pop_recbole), id_hr, id_ndcg
 
 def compute_MAP(relevant_items,ranked_list,k):
     if not relevant_items:

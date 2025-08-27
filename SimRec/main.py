@@ -10,6 +10,7 @@ from model import SimRec #Aqui estava SasRec, corrigi pra SimRec
 from utils import *
 from clusters.utils_clusters import load_item_clusters
 
+
 def str2bool(s):
     if s not in {'false', 'true', 'False', 'True'}:
         raise ValueError('Not a valid boolean string')
@@ -214,12 +215,18 @@ def main(args):
             
             test_hr_list = [e[0][1] for e in test_eval_results]
             test_ndcg_list = [e[0][0] for e in test_eval_results]
+            # test_maprecbole_list = [e[0][2] for e in test_eval_results]
+            # test_precisionrecbole_list = [e[0][3] for e in test_eval_results]
+            # test_avgpoprecbole_list = [e[0][4] for e in test_eval_results]
             test_map_list = [e[0][2] for e in test_eval_results]  # MAP@10
             test_diversity_list = [e[0][3] for e in test_eval_results]  #Diversity
             test_popularity_list = [e[0][4] for e in test_eval_results]  #Popularity
 
             val_hr_list = [e[0][1] for e in val_eval_results]
             val_ndcg_list = [e[0][0] for e in val_eval_results]
+            # val_maprecbole_list = [e[0][2] for e in val_eval_results]
+            # val_precisionrecbole_list = [e[0][3] for e in val_eval_results]
+            # val_avgpoprecbole_list = [e[0][4] for e in val_eval_results]
             val_map_list = [e[0][2] for e in val_eval_results]  # MAP@10
             val_diversity_list = [e[0][3] for e in val_eval_results]  #Diversity
             val_popularity_list = [e[0][4] for e in val_eval_results]  #Popularity
@@ -227,11 +234,17 @@ def main(args):
             # we take the average of different test/val runs
             test_hr = np.array(test_hr_list).mean()
             test_ndcg = np.array(test_ndcg_list).mean()
+            # test_maprecbole = np.array(test_maprecbole_list).mean()
+            # test_precisionrecbole = np.array(test_precisionrecbole_list).mean()
+            # test_avgpoprecbole = np.array(test_avgpoprecbole_list).mean()
             test_map = np.array(test_map_list).mean()
             test_diversity = np.array(test_diversity_list).mean()
             test_popularity = np.array(test_popularity_list).mean()
             val_hr = np.array(val_hr_list).mean()
             val_ndcg = np.array(val_ndcg_list).mean()
+            # val_maprecbole = np.array(val_maprecbole_list).mean()
+            # val_precisionrecbole = np.array(val_precisionrecbole_list).mean()
+            # val_avgpoprecbole = np.array(val_avgpoprecbole_list).mean()
             val_map = np.array(val_map_list).mean()
             val_diversity = np.array(val_diversity_list).mean()
             val_popularity = np.array(val_popularity_list).mean()
@@ -239,8 +252,11 @@ def main(args):
             # val_mae = np.array([t.cpu().numpy() if isinstance(t, torch.Tensor) else t for t in val_mae_list]).mean()
             with torch.no_grad():
                 (train_ndcg, train_hr, train_map, train_diversity, train_popularity ), train_id_hr, train_id_ndcg = evaluate_train(model, dataset, args,item_freq)
+                # (train_ndcg, train_hr, train_maprecbole, train_precisionrecbole, train_avgpoprecbole ), train_id_hr, train_id_ndcg = evaluate_train(model, dataset, args,item_freq)
             s = '\nepoch:%d, time: %f(s), train (NDCG@10: %.4f, HR@10: %.4f, MAP@10: %.4f, Diversity: %.4f, Popularity: %.4f), valid (NDCG@10: %.4f, HR@10: %.4f, MAP@10: %.4f, Diversity: %.4f, Popularity: %.4f), test (NDCG@10: %.4f, HR@10: %.4f, MAP@10: %.4f,Diversity: %.4f, Popularity: %.4f)'\
                 % (epoch, T, train_ndcg, train_hr, train_map, train_diversity, train_popularity,  val_ndcg, val_hr, val_map, val_diversity, val_popularity,  test_ndcg, test_hr, test_map, test_diversity, test_popularity)
+            # s = '\nepoch:%d, time: %f(s), train (NDCG@10: %.4f, HR@10: %.4f, MAP@10: %.4f, Precision@K: %.4f, AveragePopularity: %.4f), valid (NDCG@10: %.4f, HR@10: %.4f, MAP@10: %.4f, Diversity: %.4f, Popularity: %.4f), test (NDCG@10: %.4f, HR@10: %.4f, MAP@10: %.4f,Diversity: %.4f, Popularity: %.4f)'\
+            #     % (epoch, T, train_ndcg, train_hr, train_maprecbole, train_precisionrecbole, train_avgpoprecbole,  val_ndcg, val_hr, val_maprecbole, val_precisionrecbole, val_avgpoprecbole,  test_ndcg, test_hr, test_maprecbole, test_precisionrecbole, test_avgpoprecbole)
             print(s)
             f.write(s + '\n')
             f.flush()
@@ -263,19 +279,22 @@ def main(args):
                     # 'train/best_id_to_NDCG@10': train_id_ndcg,
                     "test/best_NDCG@10": test_ndcg,
                     "test/best_HR@10": test_hr,
-                    'test/best_MAP@10': test_map,  # Adicionado
+                    # 'test/best_MAP@10': test_maprecbole,  
+                    # "test/best_Precision@10": test_precisionrecbole,
+                    # "test/best_AveragePopularity": test_avgpoprecbole,
+                    'test/best_MAP@10': test_map,  
                     "test/best_Diversity": test_diversity,
                     "test/best_Popularity": test_popularity,
                     "val/best_NDCG@10": val_ndcg,
                     "val/best_HR@10": val_hr,
-                    'val/best_MAP@10': val_map,  # Adicionado
+                    'val/best_MAP@10': val_map,  
                     "val/best_Diversity": val_diversity,
                     "val/best_Popularity": val_popularity,
                     "train/best_NDCG@10": train_ndcg,
                     "train/best_HR@10": train_hr,
-                    'train/best_MAP@10': train_map,  # Adicionado
+                    'train/best_MAP@10': train_map,  
                     "train/best_Diversity": train_diversity,
-                    "train/best_Popularity": train_popularity
+                    "train/best_Popularity": train_popularity,
                 }
             t0 = time.time()
             model.train()
